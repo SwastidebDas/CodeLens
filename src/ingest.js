@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import { execSync } from "child_process"; //this helps to run the shell on local computer
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { OllamaEmbeddings } from "@langchain/ollama";
 
@@ -35,7 +35,7 @@ function cloneRepository() {
 
     execSync(
         `git clone ${REPO_URL} ${REPO_DIR}`,
-        { stdio: "inherit" }
+        { stdio: "inherit" }// this helps to see the live git clone status over the terminal of ur code
     );
 
     console.log("Repository cloned.");
