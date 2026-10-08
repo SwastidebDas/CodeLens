@@ -1,0 +1,21 @@
+{
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@langchain/ollama": "^1.3.0",
+    "@qdrant/js-client-rest": "^1.19.0",
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14"
+  },
+  "name": "codelens",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
