@@ -4,6 +4,14 @@ import { OllamaEmbeddings, ChatOllama } from "@langchain/ollama";
 
 const QDRANT_URL = process.env.QDRANT_URL;
 const COLLECTION_NAME = process.env.COLLECTION_NAME;
+const REPO_URL = process.env.REPO_URL;
+
+const repoName = new URL(REPO_URL)
+    .pathname
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    .replace(/\.git$/, "");
 
 const qdrant = new QdrantClient({
     url: QDRANT_URL
@@ -34,9 +42,19 @@ async function searchCode(question) {
             {
                 query: questionVector,
                 limit: 5,
-                with_payload: true
-            }
-        );
+                with_payload: true,
+
+            filter: {
+            must: [
+                {
+                    key: "repoName",
+                    match: {
+                        value: repoName
+                    }
+                }
+            ]
+        }
+    });
 
     return results.points;
 }
@@ -64,34 +82,34 @@ async function ask(question) {
         .map(result => {
 
             return `
-FILE: ${result.payload.file}
+            FILE: ${result.payload.file}
 
-${result.payload.content}
-`;
+            ${result.payload.content}
+            `;
 
         })
         .join("\n-------------------\n");
 
 
     const prompt = `
-You are a codebase analysis assistant.
+    You are a codebase analysis assistant.
 
-Answer the user's question using ONLY
-the provided code context.
+    Answer the user's question using ONLY
+    the provided code context.
 
-If the answer cannot be found in the
-context, say that you could not find
-the answer in the retrieved code.
+    If the answer cannot be found in the
+    context, say that you could not find
+    the answer in the retrieved code.
 
-CODE CONTEXT:
+    CODE CONTEXT:
 
-${context}
+    ${context}
 
 
-USER QUESTION:
+    USER QUESTION:
 
-${question}
-`;
+    ${question}
+    `;
 
 
     const response =

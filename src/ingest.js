@@ -11,6 +11,13 @@ const COLLECTION_NAME = process.env.COLLECTION_NAME;
 
 const REPO_DIR = "./repo";
 
+const repoName = new URL(REPO_URL)
+    .pathname
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    .replace(/\.git$/, "");
+
 const qdrant = new QdrantClient({
     url: QDRANT_URL
 });
@@ -224,6 +231,7 @@ async function ingest() {
                             vector: vector,
 
                             payload: {
+                                repoName:repoName,
                                 content: chunk,
 
                                 file: path.relative(
