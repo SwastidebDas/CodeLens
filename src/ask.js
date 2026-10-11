@@ -31,33 +31,111 @@ const llm = new ChatOllama({
 // Search vector DB
 // ------------------------------------
 
-async function searchCode(question,reponame) {
 
-    const questionVector =
-        await embeddings.embedQuery(question);
 
-    const results =
-        await qdrant.query(
-            COLLECTION_NAME,
-            {
-                query: questionVector,
-                limit: 7,
-                with_payload: true,
+async function classifyQuestion(question) {
+    console.log("\nAnalyzing the question...\n");
 
-            filter: {
-            must: [
+    const response = await llm.invoke(`
+        You are a question classifier for a codebase analysis assistant.
+
+        Determine whether answering the user's question requires
+        understanding the project broadly across multiple files,
+        rather than inspecting only a specific file, function,
+        or implementation detail.
+
+        Return true for questions asking about:
+        - The project's overall purpose or features
+        - A summary or overview of the codebase
+        - Overall architecture or module interactions
+        - How the major components work together
+        - A broad explanation of the entire project
+
+        Return false for questions focused on:
+        - A specific function, file, class, or variable
+        - A particular bug or implementation detail
+        - A specific API, query, or code snippet
+
+        Return exactly one word: true or false.
+        Do not provide any explanation.
+
+        User question: ${question}
+    `);
+
+    const answer = response.content.trim().toLowerCase();
+
+    return answer === "true";
+}
+
+
+
+async function searchCode(question, reponame) {
+
+    const isOverviewQuestion = await classifyQuestion(question);
+
+    if (isOverviewQuestion) {
+        console.log(
+            "\nThis is a Overview question: retrieving all project chunks.\n"
+        );
+
+        let allPoints = [];
+        let offset = null;
+
+        do {
+            const results = await qdrant.scroll(
+                COLLECTION_NAME,
                 {
-                    key: "repoName",
-                    match: {
-                        value: reponame
+                    limit: 100,
+                    offset: offset,
+                    with_payload: true,
+                    with_vector: false,
+                    filter: {
+                        must: [
+                            {
+                                key: "repoName",
+                                match: {
+                                    value: reponame
+                                }
+                            }
+                        ]
                     }
                 }
-            ]
+            );
+
+            allPoints.push(...results.points);
+            offset = results.next_page_offset;
+
+        } while (offset !== null);
+
+        return allPoints;
+    }
+
+    console.log("\nRetriving chunks...\n");
+
+    const questionVector = await embeddings.embedQuery(question);
+
+    const results = await qdrant.query(
+        COLLECTION_NAME,
+        {
+            query: questionVector,
+            limit: 7,
+            with_payload: true,
+            filter: {
+                must: [
+                    {
+                        key: "repoName",
+                        match: {
+                            value: reponame
+                        }
+                    }
+                ]
+            }
         }
-    });
+    );
 
     return results.points;
 }
+
 
 
 // ------------------------------------
@@ -69,14 +147,7 @@ async function ask(question) {
     const results =
         await searchCode(question,repoName);
 
-    console.log("\nRelevant files:\n");
-
-    for (const result of results) {
-
-        console.log(
-            `${result.payload.file} - ${result.score}`
-        );
-    }
+    console.log(`\nRetrived chunks:${results.length}\n`);
 
     const context = results
         .map(result => {
@@ -111,6 +182,7 @@ async function ask(question) {
     ${question}
     `;
 
+    console.log("\nWait till I get you the Answer...\n")
 
     const response =
         await llm.invoke(prompt);
@@ -131,7 +203,7 @@ const question =
 if (!question) {
 
     console.log(
-        'Usage: npm run ask -- "How does authentication work?"'
+        '\nUsage: npm run ask -- "How does authentication work?"\n'
     );
 
     process.exit(1);
