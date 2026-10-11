@@ -4,12 +4,11 @@ import path from "path";
 import { execSync } from "child_process"; //this helps to run the shell on local computer
 import { QdrantClient } from "@qdrant/js-client-rest";
 import { OllamaEmbeddings } from "@langchain/ollama";
+import { createHash, randomUUID } from "node:crypto";
 
 const REPO_URL = process.env.REPO_URL;
 const QDRANT_URL = process.env.QDRANT_URL;
 const COLLECTION_NAME = process.env.COLLECTION_NAME;
-
-const REPO_DIR = "./repo";
 
 const repoName = new URL(REPO_URL)
     .pathname
@@ -17,6 +16,8 @@ const repoName = new URL(REPO_URL)
     .filter(Boolean)
     .pop()
     .replace(/\.git$/, "");
+
+const REPO_DIR = `./repodump/${repoName}`;
 
 const qdrant = new QdrantClient({
     url: QDRANT_URL
@@ -28,13 +29,18 @@ const embeddings = new OllamaEmbeddings({
 
 
 // ------------------------------------
-// 1. Clone repository
+// cloning the repo.
 // ------------------------------------
 
 function cloneRepository() {
-
     if (fs.existsSync(REPO_DIR)) {
-        console.log("Repository already exists.");
+         console.log("Repository already exists. Pulling updates...");
+
+        execSync(
+            `git -C "${REPO_DIR}" pull`,
+            { stdio: "inherit" }
+        );
+
         return;
     }
 
@@ -50,9 +56,8 @@ function cloneRepository() {
 
 
 // ------------------------------------
-// 2. Read files recursively
+// extracting files
 // ------------------------------------
-
 function getFiles(dir) {
 
     let files = [];
@@ -60,9 +65,7 @@ function getFiles(dir) {
     const entries = fs.readdirSync(dir);
 
     for (const entry of entries) {
-
         const fullPath = path.join(dir, entry);
-
         const stat = fs.statSync(fullPath);
 
         if (stat.isDirectory()) {
@@ -123,28 +126,59 @@ function isCodeFile(file) {
 
 
 // ------------------------------------
-// 4. Split code into chunks
+// Splitting  the code into chunks
 // ------------------------------------
 
 function chunkText(text, chunkSize = 1500) {
 
     const chunks = [];
-
     for (let i = 0; i < text.length; i += chunkSize) {
 
         chunks.push(
             text.substring(i, i + chunkSize)
         );
     }
-
     return chunks;
+}
+
+// ------------------------------------
+// Creating hash of my file content
+// ------------------------------------
+function getFileHash(content) {
+    return createHash("sha256")
+        .update(content)
+        .digest("hex");
+}
+
+// ------------------------------------
+// Check to find any existing record over db to avoid duplication
+// ------------------------------------
+async function getExistingFile(repoName, file) {
+    const result = await qdrant.scroll(COLLECTION_NAME, {
+        filter: {
+            must: [
+                {
+                    key: "repoName",
+                    match: { value: repoName }
+                },
+                {
+                    key: "file",
+                    match: { value: file }
+                }
+            ]
+        },
+        limit: 1,
+        with_payload: true,
+        with_vector: false
+    });
+
+    return result.points[0]?.payload ?? null;
 }
 
 
 // ------------------------------------
-// 5. Create Qdrant collection
+// Creating Qdrant collection
 // ------------------------------------
-
 async function createCollection() {
 
     const vectorSize = 768;
@@ -171,9 +205,8 @@ async function createCollection() {
     }
 }
 
-
 // ------------------------------------
-// 6. Main ingestion
+// Main ingestion
 // ------------------------------------
 
 async function ingest() {
@@ -186,8 +219,6 @@ async function ingest() {
 
     console.log(`Found ${files.length} files.`);
 
-    let id = 0;
-
     for (const file of files) {
 
         if (!isCodeFile(file)) {
@@ -198,15 +229,52 @@ async function ingest() {
 
         try {
 
-            content = fs.readFileSync(
-                file,
-                "utf-8"
-            );
-
+            content = fs.readFileSync(file,"utf-8");
         } catch {
-
             continue;
         }
+        
+        const relativeFile = path
+            .relative(REPO_DIR, file)
+            .replace(/\\/g, "/");
+
+        const fileHash = getFileHash(content);
+
+        const existing = await getExistingFile(
+            repoName,
+            relativeFile
+        );
+
+        // Skip unchanged files.
+        if (existing?.fileHash === fileHash) {
+            console.log(`Skipping unchanged file: ${relativeFile}`);
+            continue;
+        }
+
+        // If the file has changed, remove its old chunks.
+        if (existing) {
+            console.log(`Updating changed file: ${relativeFile}`);
+
+        
+            await qdrant.delete(COLLECTION_NAME, {
+                wait: true,
+                filter: {
+                    must: [
+                        {
+                            key: "repoName",
+                            match: { value: repoName }
+                        },
+                        {
+                            key: "file",
+                            match: { value: relativeFile }
+                        }
+                    ]
+                }
+            });
+        } else {
+            console.log(`New file: ${relativeFile}`);
+        }
+
 
         const chunks = chunkText(content);
 
@@ -216,29 +284,24 @@ async function ingest() {
 
         for (const chunk of chunks) {
 
-            const vector =
-                await embeddings.embedQuery(chunk);
+            const vector = await embeddings.embedQuery(chunk);
 
+            const payload = {
+            repoName,
+            file: relativeFile,
+            content: chunk,
+            fileHash
+            };
+            
             await qdrant.upsert(
                 COLLECTION_NAME,
                 {
                     wait: true,
-
                     points: [
                         {
-                            id: id++,
-
+                            id: randomUUID(),
                             vector: vector,
-
-                            payload: {
-                                repoName:repoName,
-                                content: chunk,
-
-                                file: path.relative(
-                                    REPO_DIR,
-                                    file
-                                )
-                            }
+                            payload
                         }
                     ]
                 }

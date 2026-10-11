@@ -31,7 +31,7 @@ const llm = new ChatOllama({
 // Search vector DB
 // ------------------------------------
 
-async function searchCode(question) {
+async function searchCode(question,reponame) {
 
     const questionVector =
         await embeddings.embedQuery(question);
@@ -41,7 +41,7 @@ async function searchCode(question) {
             COLLECTION_NAME,
             {
                 query: questionVector,
-                limit: 5,
+                limit: 7,
                 with_payload: true,
 
             filter: {
@@ -49,7 +49,7 @@ async function searchCode(question) {
                 {
                     key: "repoName",
                     match: {
-                        value: repoName
+                        value: reponame
                     }
                 }
             ]
@@ -67,7 +67,7 @@ async function searchCode(question) {
 async function ask(question) {
 
     const results =
-        await searchCode(question);
+        await searchCode(question,repoName);
 
     console.log("\nRelevant files:\n");
 
