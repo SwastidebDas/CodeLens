@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { QdrantClient } from "@qdrant/js-client-rest";
-import readline from "node:readline/promises";
 
 const qdrant = new QdrantClient({
     url: process.env.QDRANT_URL
@@ -9,63 +8,55 @@ const qdrant = new QdrantClient({
 const REPO_URL = process.env.REPO_URL;
 const COLLECTION_NAME = process.env.COLLECTION_NAME;
 
-const reponame = new URL(REPO_URL)
-    .pathname
+const url = new URL(REPO_URL);
+
+const parts = url.pathname
     .split("/")
-    .filter(Boolean)
-    .pop()
-    .replace(/\.git$/, "");
+    .filter(Boolean);
+
+const owner = parts[0];
+const repoName = parts[1].replace(/\.git$/, "");
+
+const repoId = `${owner}/${repoName}`;
 
 
-async function deleteRepository(repoName) {
-    if (repoName) {
-        // Delete only the specified repository's records
-        await qdrant.delete(COLLECTION_NAME, {
-            wait: true,
-            filter: {
-                must: [
-                    {
-                        key: "repoName",
-                        match: {
-                            value: repoName
+
+async function deleteRepository(repoId) {
+    try {
+        const collections = await qdrant.getCollections();
+
+        const exists = collections.collections.some(
+            collection => collection.name === COLLECTION_NAME
+        );
+
+        if (!exists) {
+            console.log(`Collection "${COLLECTION_NAME}" does not exist.`);
+            return;
+        }
+
+        if (repoId) {
+            await qdrant.delete(COLLECTION_NAME, {
+                wait: true,
+                filter: {
+                    must: [
+                        {
+                            key: "repoId",
+                            match: {
+                                value: repoId
+                            }
                         }
-                    }
-                ]
-            }
-        });
+                    ]
+                }
+            });
 
-        console.log(`Deleted records for repository: ${repoName}`);
-    } else {
-        // No repoName supplied: clear the entire collection
-        // const rl = readline.createInterface({
-        //     input: process.stdin,
-        //     output: process.stdout
-        // });
-
-        // const answer = await rl.question(
-        //     `WARNING: This will delete ALL records in "${COLLECTION_NAME}". Continue? (yes/no): `
-        // );
-
-        // rl.close();
-
-        // if (answer.trim().toLowerCase() !== "yes") {
-        //     console.log("Deletion cancelled.");
-        //     return;
-        // }
-
-        await qdrant.deleteCollection(COLLECTION_NAME);
-
-        console.log("Collection deleted successfully.");
+            console.log(`Deletion request completed for repository: ${repoId}`);
+        } else {
+            await qdrant.deleteCollection(COLLECTION_NAME);
+            console.log("Collection deleted successfully.");
+        }
+    } catch (error) {
+        console.error("Vector DB cleanup Failure: ", error.message);
     }
 }
 
-// const repoName = process.argv[2];
-
-// try {
-//     await deleteRepository(repoName);
-// } catch (error) {
-//     console.error("Deletion failed:", error.message);
-//     process.exitCode = 1;
-// }
-
-deleteRepository();
+deleteRepository(repoId);

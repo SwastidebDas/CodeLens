@@ -6,12 +6,16 @@ const QDRANT_URL = process.env.QDRANT_URL;
 const COLLECTION_NAME = process.env.COLLECTION_NAME;
 const REPO_URL = process.env.REPO_URL;
 
-const repoName = new URL(REPO_URL)
-    .pathname
+const url = new URL(REPO_URL);
+
+const parts = url.pathname
     .split("/")
-    .filter(Boolean)
-    .pop()
-    .replace(/\.git$/, "");
+    .filter(Boolean);
+
+const owner = parts[0];
+const repoName = parts[1].replace(/\.git$/, "");
+
+const repoId = `${owner}/${repoName}`;
 
 const qdrant = new QdrantClient({
     url: QDRANT_URL
@@ -69,7 +73,7 @@ async function classifyQuestion(question) {
 
 
 
-async function searchCode(question, reponame) {
+async function searchCode(question, repoId) {
 
     const isOverviewQuestion = await classifyQuestion(question);
 
@@ -92,9 +96,9 @@ async function searchCode(question, reponame) {
                     filter: {
                         must: [
                             {
-                                key: "repoName",
+                                key: "repoId",
                                 match: {
-                                    value: reponame
+                                    value: repoId
                                 }
                             }
                         ]
@@ -123,9 +127,9 @@ async function searchCode(question, reponame) {
             filter: {
                 must: [
                     {
-                        key: "repoName",
+                        key: "repoId",
                         match: {
-                            value: reponame
+                            value: repoId
                         }
                     }
                 ]
@@ -145,7 +149,7 @@ async function searchCode(question, reponame) {
 async function ask(question) {
 
     const results =
-        await searchCode(question,repoName);
+        await searchCode(question,repoId);
 
     console.log(`\nRetrived chunks:${results.length}\n`);
 

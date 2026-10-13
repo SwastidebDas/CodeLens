@@ -10,14 +10,25 @@ const REPO_URL = process.env.REPO_URL;
 const QDRANT_URL = process.env.QDRANT_URL;
 const COLLECTION_NAME = process.env.COLLECTION_NAME;
 
-const repoName = new URL(REPO_URL)
-    .pathname
-    .split("/")
-    .filter(Boolean)
-    .pop()
-    .replace(/\.git$/, "");
+// const repoName = new URL(REPO_URL)
+//     .pathname
+//     .split("/")
+//     .filter(Boolean)
+//     .pop()
+//     .replace(/\.git$/, "");
 
-const REPO_DIR = `./repodump/${repoName}`;
+const url = new URL(REPO_URL);
+
+const parts = url.pathname
+    .split("/")
+    .filter(Boolean);
+
+const owner = parts[0];
+const repoName = parts[1].replace(/\.git$/, "");
+
+const repoId = `${owner}/${repoName}`;
+
+const REPO_DIR = path.join("./repodump", owner, repoName);
 
 const qdrant = new QdrantClient({
     url: QDRANT_URL
@@ -153,13 +164,13 @@ function getFileHash(content) {
 // ------------------------------------
 // Check to find any existing record over db to avoid duplication
 // ------------------------------------
-async function getExistingFile(repoName, file) {
+async function getExistingFile(repoId, file) {
     const result = await qdrant.scroll(COLLECTION_NAME, {
         filter: {
             must: [
                 {
-                    key: "repoName",
-                    match: { value: repoName }
+                    key: "repoId",
+                    match: { value: repoId }
                 },
                 {
                     key: "file",
@@ -180,37 +191,31 @@ async function getExistingFile(repoName, file) {
 // Creating Qdrant collection
 // ------------------------------------
 async function createCollection() {
-
-    const vectorSize = 768;
-
     try {
-
         await qdrant.getCollection(COLLECTION_NAME);
-
         console.log("Collection already exists.");
-
-    } catch {
+    } catch (error) {
+        if (error.status !== 404) {
+            throw error;
+        }
 
         console.log("Creating Qdrant collection...");
 
-        await qdrant.createCollection(
-            COLLECTION_NAME,
-            {
-                vectors: {
-                    size: vectorSize,
-                    distance: "Cosine"
-                }
+        await qdrant.createCollection(COLLECTION_NAME, {
+            vectors: {
+                size: 768,
+                distance: "Cosine"
             }
-        );
+        });
     }
 }
 
 // ------------------------------------
 // Function generate IDs , to ensure Uniqueness to chunks
 // ------------------------------------
-function getChunkId(repoName, file, chunkIndex) {
+function getChunkId(repoId, file, chunkIndex) {
     return createHash("sha256")
-        .update(`${repoName}:${file}:${chunkIndex}`)
+        .update(`${repoId}:${file}:${chunkIndex}`)
         .digest("hex")
         .slice(0, 32);
 }
@@ -251,7 +256,7 @@ async function ingest() {
         const fileHash = getFileHash(content);
 
         const existing = await getExistingFile(
-            repoName,
+            repoId,
             relativeFile
         );
 
@@ -271,8 +276,8 @@ async function ingest() {
                 filter: {
                     must: [
                         {
-                            key: "repoName",
-                            match: { value: repoName }
+                            key: "repoId",
+                            match: { value: repoId }
                         },
                         {
                             key: "file",
@@ -298,7 +303,7 @@ async function ingest() {
             const vector = await embeddings.embedQuery(chunk);
 
             const payload = {
-            repoName,
+            repoId,
             file: relativeFile,
             content: chunk,
             fileHash
@@ -310,7 +315,7 @@ async function ingest() {
                     wait: true,
                     points: [
                         {
-                            id: getChunkId(repoName,relativeFile,chunkIndex++),
+                            id: getChunkId(repoId,relativeFile,chunkIndex++),
                             vector: vector,
                             payload
                         }
@@ -321,23 +326,5 @@ async function ingest() {
     }
 
     console.log("Ingestion completed.");
-}
-
-async function cleanDB(repoName) {
-    await qdrant.delete(COLLECTION_NAME, {
-        wait: true,
-        filter: {
-            must: [
-                {
-                    key: "repoName",
-                    match: {
-                        value: repoName
-                    }
-                }
-            ]
-        }
-    });
-
-    console.log(`Deleted all chunks for repository: ${repoName}`);
 }
 ingest();
