@@ -118,7 +118,7 @@ async function searchCode(question, reponame) {
         COLLECTION_NAME,
         {
             query: questionVector,
-            limit: 7,
+            limit: 10,
             with_payload: true,
             filter: {
                 must: [

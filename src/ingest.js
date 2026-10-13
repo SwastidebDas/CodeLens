@@ -206,6 +206,16 @@ async function createCollection() {
 }
 
 // ------------------------------------
+// Function generate IDs , to ensure Uniqueness to chunks
+// ------------------------------------
+function getChunkId(repoName, file, chunkIndex) {
+    return createHash("sha256")
+        .update(`${repoName}:${file}:${chunkIndex}`)
+        .digest("hex")
+        .slice(0, 32);
+}
+
+// ------------------------------------
 // Main ingestion
 // ------------------------------------
 
@@ -282,6 +292,7 @@ async function ingest() {
             `Processing ${file} -> ${chunks.length} chunks`
         );
 
+        let chunkIndex = 0;
         for (const chunk of chunks) {
 
             const vector = await embeddings.embedQuery(chunk);
@@ -299,7 +310,7 @@ async function ingest() {
                     wait: true,
                     points: [
                         {
-                            id: randomUUID(),
+                            id: getChunkId(repoName,relativeFile,chunkIndex++),
                             vector: vector,
                             payload
                         }
@@ -312,5 +323,21 @@ async function ingest() {
     console.log("Ingestion completed.");
 }
 
+async function cleanDB(repoName) {
+    await qdrant.delete(COLLECTION_NAME, {
+        wait: true,
+        filter: {
+            must: [
+                {
+                    key: "repoName",
+                    match: {
+                        value: repoName
+                    }
+                }
+            ]
+        }
+    });
 
+    console.log(`Deleted all chunks for repository: ${repoName}`);
+}
 ingest();
