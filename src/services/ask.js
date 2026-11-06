@@ -15,7 +15,7 @@ const parts = url.pathname
 const owner = parts[0];
 const repoName = parts[1].replace(/\.git$/, "");
 
-const repoId = `${owner}/${repoName}`;
+//const repoId = `${owner}/${repoName}`;
 
 const qdrant = new QdrantClient({
     url: QDRANT_URL
@@ -47,7 +47,7 @@ async function classifyQuestion(question) {
         understanding the project broadly across multiple files,
         rather than inspecting only a specific file, function,
         or implementation detail.
-
+        
         Return true for questions asking about:
         - The project's overall purpose or features
         - A summary or overview of the codebase
@@ -122,7 +122,7 @@ async function searchCode(question, repoId) {
         COLLECTION_NAME,
         {
             query: questionVector,
-            limit: 10,
+            limit: 15,
             with_payload: true,
             filter: {
                 must: [
@@ -146,7 +146,7 @@ async function searchCode(question, repoId) {
 // Ask LLM
 // ------------------------------------
 
-export async function ask(question) {
+export default async function ask(question,repoId) {
 
     const results =
         await searchCode(question,repoId);
@@ -186,31 +186,12 @@ export async function ask(question) {
     ${question}
     `;
 
-    console.log("\nWait till I get you the Answer...\n")
+    console.log("\nLLM invoked\n");
 
     const response =
         await llm.invoke(prompt);
 
-    console.log("\nANSWER:\n");
+    console.log("\nResponse to the query was returned\n");
 
-    console.log(response.content);
+    return response.content
 }
-
-
-// ------------------------------------
-// Run
-// ------------------------------------
-
-const question =
-    process.argv.slice(2).join(" ");
-
-if (!question) {
-
-    console.log(
-        '\nUsage: npm run ask -- "How does authentication work?"\n'
-    );
-
-    process.exit(1);
-}
-
-ask(question);
