@@ -1,14 +1,16 @@
 import express from "express";
 import dotenv from "dotenv";
-
+import ingestionRouter from "./src/routes/ingestionRoute.js";
+import askRouter from "./src/routes/askRoute.js"
 
 dotenv.config();
 
-const app= express();
+export const app= express();
 
-app.get("/",(req,res)=>{
-    res.send("CodeLens is running...");
-})
+app.use(express.json());
+
+app.use("/api",ingestionRouter);
+app.use("/api",askRouter);
 
 app.listen(process.env.PORT,()=>{
     console.log(`Server Running on Port ${process.env.PORT}`);
