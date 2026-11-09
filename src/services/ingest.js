@@ -43,6 +43,9 @@ function cloneRepository(repoUrl, repoDir) {
     });
 
     console.log("Repository cloned.");
+
+    // console.log("Files immediately after cloning:");
+    // console.log(fs.readdirSync(repoDir));
 }
 
 
@@ -82,40 +85,6 @@ function getFiles(dir) {
 
     return files;
 }
-
-
-// ------------------------------------
-// 3. Check whether file is useful
-// ------------------------------------
-
-function isCodeFile(file) {
-
-    const extensions = [
-        ".js",
-        ".ts",
-        ".jsx",
-        ".tsx",
-        ".cs",
-        ".cpp",
-        ".h",
-        ".hpp",
-        ".java",
-        ".py",
-        ".go",
-        ".rs",
-        ".php",
-        ".rb",
-        ".sql",
-        ".html",
-        ".css",
-        ".json",
-        ".md"
-    ];
-
-    return extensions.includes(path.extname(file));
-}
-
-
 // ------------------------------------
 // Splitting  the code into chunks
 // ------------------------------------
@@ -230,7 +199,7 @@ export async function ingest(repourl) {
     const REPO_DIR = path.join("./repodump", owner, repoName);
 
     cloneRepository(repourl, REPO_DIR);
-
+    
     await createCollection();
 
     const files = getFiles(REPO_DIR);
@@ -238,11 +207,6 @@ export async function ingest(repourl) {
     console.log(`Found ${files.length} files.`);
 
     for (const file of files) {
-
-        if (!isCodeFile(file)) {
-            continue;
-        }
-
         let content;
 
         try {
